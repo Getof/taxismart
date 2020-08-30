@@ -4,7 +4,7 @@
     "type": "APK",
     "kind": "Directory"
   },
-  "applicationId": "com.example.taxismart",
+  "applicationId": "ru.ecom42.taxismart",
   "variantName": "release",
   "elements": [
     {

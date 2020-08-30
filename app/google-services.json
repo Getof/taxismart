@@ -10,7 +10,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:336696135948:android:dd07a7f101cb2627f7b929",
         "android_client_info": {
-          "package_name": "com.example.taxismart"
+          "package_name": "ru.ecom42.taxismart"
         }
       },
       "oauth_client": [
@@ -18,7 +18,7 @@
           "client_id": "336696135948-sthpgjkt8g23c08aqv7kk7fj1ftumi0u.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.example.taxismart",
+            "package_name": "ru.ecom42.taxismart",
             "certificate_hash": "320422954e78f5e8bd7b2ef8159cd8b51965185e"
           }
         },
