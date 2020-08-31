@@ -2,7 +2,10 @@ package ru.ecom42.taxismart.ui.home;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.pm.PackageManager;
 import android.content.res.Resources;
+import android.location.Address;
+import android.location.Geocoder;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.Looper;
@@ -14,11 +17,13 @@ import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
 import ru.ecom42.taxismart.Common;
 import ru.ecom42.taxismart.R;
+
 import com.firebase.geofire.GeoFire;
 import com.firebase.geofire.GeoLocation;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -48,6 +53,10 @@ import com.karumi.dexter.listener.PermissionGrantedResponse;
 import com.karumi.dexter.listener.PermissionRequest;
 import com.karumi.dexter.listener.single.PermissionListener;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
+
 public class HomeFragment extends Fragment implements OnMapReadyCallback {
 
     private GoogleMap mMap;
@@ -60,22 +69,28 @@ public class HomeFragment extends Fragment implements OnMapReadyCallback {
 
     SupportMapFragment mapFragment;
 
+    private boolean isFirstTime = true;
+
     //OnlineSystem
     DatabaseReference onlineRef, currentUserRef, driversLocationRef;
     GeoFire geoFire;
     ValueEventListener onlineValueEventListener = new ValueEventListener() {
         @Override
         public void onDataChange(@NonNull DataSnapshot snapshot) {
-            if (snapshot.exists())
+            if (snapshot.exists() && currentUserRef != null)
+            {
                 currentUserRef.onDisconnect().removeValue();
+
+            }
         }
 
         @Override
         public void onCancelled(@NonNull DatabaseError error) {
-            Snackbar.make(mapFragment.getView(),error.getMessage(),Snackbar.LENGTH_LONG)
+            Snackbar.make(mapFragment.getView(), error.getMessage(), Snackbar.LENGTH_LONG)
                     .show();
         }
     };
+
 
     @Override
     public void onDestroy() {
@@ -108,20 +123,22 @@ public class HomeFragment extends Fragment implements OnMapReadyCallback {
         return root;
     }
 
-    @SuppressLint("MissingPermission")
+
     private void init() {
         onlineRef = FirebaseDatabase.getInstance().getReference().child(".info/connected");
-        driversLocationRef = FirebaseDatabase.getInstance().getReference(Common.DRIVERS_LOCATION_REFERENCES);
-        currentUserRef = FirebaseDatabase.getInstance().getReference(Common.DRIVERS_LOCATION_REFERENCES)
-                .child(FirebaseAuth.getInstance().getCurrentUser().getUid());
-        geoFire = new GeoFire(driversLocationRef);
 
-        registerOnlineSystem();
+        if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+//            Snackbar.make(getView(), getString(R.string.permissiom_require), Snackbar.LENGTH_SHORT).show();
+            return;
+        }
+
+
 
         locationRequest = new LocationRequest();
-        locationRequest.setSmallestDisplacement(10f);
-        locationRequest.setInterval(5000);
-        locationRequest.setFastestInterval(3000);
+        locationRequest.setSmallestDisplacement(50f);
+        locationRequest.setInterval(15000);
+        locationRequest.setFastestInterval(10000);
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
 
         locationCallback = new LocationCallback() {
@@ -132,26 +149,48 @@ public class HomeFragment extends Fragment implements OnMapReadyCallback {
                         locationResult.getLastLocation().getLongitude());
                 mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(newPosition, 18f));
 
-                //Update Location
-                geoFire.setLocation(FirebaseAuth.getInstance().getCurrentUser().getUid(),
-                        new GeoLocation(locationResult.getLastLocation().getLatitude(),
-                                locationResult.getLastLocation().getLongitude()),
-                        new GeoFire.CompletionListener() {
-                            @Override
-                            public void onComplete(String key, DatabaseError error) {
+                Geocoder geocoder = new Geocoder(getContext(), Locale.getDefault());
+                List<Address> addressList;
+                try {
+                    addressList = geocoder.getFromLocation(locationResult.getLastLocation().getLatitude(),
+                            locationResult.getLastLocation().getLongitude(), 1);
+                    String cityName = addressList.get(0).getLocality();
+
+                    driversLocationRef = FirebaseDatabase.getInstance().getReference(Common.DRIVERS_LOCATION_REFERENCES)
+                            .child(cityName);
+                    currentUserRef = driversLocationRef.child(FirebaseAuth.getInstance().getCurrentUser().getUid());
+                    geoFire = new GeoFire(driversLocationRef);
+
+                    //Update Location
+                    geoFire.setLocation(FirebaseAuth.getInstance().getCurrentUser().getUid(),
+                            new GeoLocation(locationResult.getLastLocation().getLatitude(),
+                                    locationResult.getLastLocation().getLongitude()),
+                            (key, error) -> {
                                 if (error != null)
-                                    Snackbar.make(mapFragment.getView(),error.getMessage(),Snackbar.LENGTH_LONG)
+                                    Snackbar.make(mapFragment.getView(), error.getMessage(), Snackbar.LENGTH_LONG)
                                             .show();
-                                else
-                                    Snackbar.make(mapFragment.getView(),"Вы на линии",Snackbar.LENGTH_LONG)
-                                            .show();
-                            }
-                        });
+
+                            });
+
+                    registerOnlineSystem();
+
+                } catch (IOException e) {
+                    Snackbar.make(getView(), e.getMessage(), Snackbar.LENGTH_SHORT).show();
+                }
+
+
             }
         };
 
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(getContext());
-        fusedLocationProviderClient.requestLocationUpdates(locationRequest,locationCallback, Looper.myLooper());
+        if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            Snackbar.make(getView(),getString(R.string.permissiom_require), Snackbar.LENGTH_SHORT).show();
+            return;
+        }
+        fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper());
+
+
     }
 
     @Override
@@ -163,32 +202,25 @@ public class HomeFragment extends Fragment implements OnMapReadyCallback {
         Dexter.withContext(getContext())
                 .withPermission(Manifest.permission.ACCESS_FINE_LOCATION)
                 .withListener(new PermissionListener() {
-                    @SuppressLint("MissingPermission")
                     @Override
                     public void onPermissionGranted(PermissionGrantedResponse permissionGrantedResponse) {
 
+                        if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                                ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                            Snackbar.make(getView(),getString(R.string.permissiom_require), Snackbar.LENGTH_SHORT).show();
+                            return;
+                        }
                         mMap.setMyLocationEnabled(true);
                         mMap.getUiSettings().setMyLocationButtonEnabled(true);
-                        mMap.setOnMyLocationButtonClickListener(new GoogleMap.OnMyLocationButtonClickListener() {
-                            @Override
-                            public boolean onMyLocationButtonClick() {
-                                fusedLocationProviderClient.getLastLocation()
-                                        .addOnFailureListener(new OnFailureListener() {
-                                            @Override
-                                            public void onFailure(@NonNull Exception e) {
-                                                Toast.makeText(getContext(), "" + e.getMessage(), Toast.LENGTH_SHORT).show();
-                                            }
-                                        })
-                                        .addOnSuccessListener(new OnSuccessListener<Location>() {
-                                            @Override
-                                            public void onSuccess(Location location) {
-                                                LatLng userLatLng = new LatLng(location.getLatitude(),location.getLongitude());
-                                                mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(userLatLng,18f));
+                        mMap.setOnMyLocationButtonClickListener(() -> {
+                            fusedLocationProviderClient.getLastLocation()
+                                    .addOnFailureListener(e -> Toast.makeText(getContext(), "" + e.getMessage(), Toast.LENGTH_SHORT).show())
+                                    .addOnSuccessListener(location -> {
+                                        LatLng userLatLng = new LatLng(location.getLatitude(),location.getLongitude());
+                                        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(userLatLng,18f));
 
-                                            }
-                                        });
-                                return true;
-                            }
+                                    });
+                            return true;
                         });
 
                         View locationButton = ((View) mapFragment.getView().findViewById(Integer.parseInt("1"))
@@ -221,6 +253,8 @@ public class HomeFragment extends Fragment implements OnMapReadyCallback {
             Log.e("EDMT_ERROR", e.getMessage());
         }
 
+        Snackbar.make(mapFragment.getView(), "Вы на линии", Snackbar.LENGTH_LONG)
+                .show();
 
     }
 }

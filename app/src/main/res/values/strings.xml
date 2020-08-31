@@ -15,5 +15,6 @@
 
     <string name="menu_home">Главная</string>
     <string name="menu_sign_out">Выход</string>
+    <string name="permissiom_require">Доступ к месту положения не разрешен!</string>
 
 </resources>
